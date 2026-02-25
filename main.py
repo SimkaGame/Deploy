@@ -12,4 +12,4 @@ if not secret:
 	sys.exit(1)
 
 h = hashlib.sha256(secret.encode()).hexdigest()[:3]
-print(f"Secret hash: {h[:3]}**")
+print(f"System started. Secret hash: {h[:3]}**")

@@ -1,15 +1,11 @@
 import re
-from typing_extensions import Self
-
 from pydantic import (
     BaseModel,
     EmailStr,
     Field,
     field_validator,
-    model_validator,
-    ValidationInfo
+    model_validator
 )
-
 
 class UserCreate(BaseModel):
     username: str = Field(
@@ -42,7 +38,7 @@ class UserCreate(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def check_passwords_match(self) -> Self:
+    def check_passwords_match(self):
         if self.password != self.confirm_password:
             raise ValueError("Пароли не совпадают")
         return self

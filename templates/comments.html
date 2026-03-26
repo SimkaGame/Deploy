@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+</head>
+<body>
+    <h1>{{ title }}</h1>
+    <hr>
+    
+    <form method="post">
+        <label>Comment:</label><br>
+        <textarea name="comment" rows="3" cols="40" required></textarea><br>
+        <button type="submit">Submit</button>
+    </form>
+
+    <hr>
+    <strong>Messages list:</strong>
+    <div>
+        {% for comment in comments %}
+            <p>{{ comment | safe }}</p>
+        {% endfor %}
+    </div>
+</body>
+</html>

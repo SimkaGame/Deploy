@@ -6,8 +6,8 @@
 
 ## 2. Вывод программы: "System started. Secret hash: MyS**"*
 
-![alt text](./Images/1.png "Hash")
+![alt text](./Images/0_1.png "Hash")
 
 ## 3. Вывод команды ls -la, подтверждающий наличие файла .env
 
-![alt text](./Images/2.png ".env")
+![alt text](./Images/0_2.png ".env")

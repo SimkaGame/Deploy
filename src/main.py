@@ -1,10 +1,11 @@
 import os
 import uuid
-import filetype
+import aiofiles
 from typing import Annotated, Any, Optional
 from dotenv import load_dotenv
+from cryptography.fernet import Fernet
 from fastapi import FastAPI, Request, Response, Form, Depends, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import Response as FastApiResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 load_dotenv()
@@ -18,10 +19,12 @@ app.add_middleware(
 
 STORAGE_DIR = "storage"
 MAX_FILE_SIZE = 2 * 1024 * 1024
-ALLOWED_MIMES = ["image/jpeg", "image/png"]
 
 if not os.path.exists(STORAGE_DIR):
     os.makedirs(STORAGE_DIR)
+
+ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
+cipher_suite = Fernet(ENCRYPTION_KEY.encode()) if ENCRYPTION_KEY else None
 
 users = [
     {"username": "admin", "role": "admin"},
@@ -29,10 +32,7 @@ users = [
     {"username": "bob", "role": "user"},
 ]
 
-files_db = [
-    {"id": 1, "filename": "report_alice.pdf", "owner": "alice", "path": None},
-    {"id": 2, "filename": "photo_bob.jpg", "owner": "bob", "path": None},
-]
+files_db = []
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next: Any) -> Any:
@@ -52,7 +52,6 @@ def get_current_user(request: Request) -> Optional[dict]:
         return None
     return next((u for u in users if u["username"] == username), None)
 
-
 @app.post("/login")
 async def login(request: Request, username: str = Form(...)):
     name = username.lower().strip()
@@ -63,44 +62,39 @@ async def login(request: Request, username: str = Form(...)):
 
 @app.post("/files/upload")
 async def upload_file(
-    file: UploadFile = File(...), 
+    file: UploadFile = File(...),
+    encrypt: bool = False,
     user: Annotated[dict, Depends(get_current_user)] = None
 ):
     if not user:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
-    head = await file.read(2048)
-    await file.seek(0)
-    kind = filetype.guess(head)
+    content = await file.read()
     
-    if kind is None or kind.mime not in ALLOWED_MIMES:
-        raise HTTPException(status_code=400, detail=f"Uploaded file is not a valid JPEG/PNG image")
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large")
+
+    if encrypt:
+        if not cipher_suite:
+            raise HTTPException(status_code=500, detail="Encryption key not configured")
+        content = cipher_suite.encrypt(content)
 
     file_uuid = str(uuid.uuid4())
     physical_path = os.path.join(STORAGE_DIR, f"{file_uuid}.bin")
 
-    total_size = 0
-    with open(physical_path, "wb") as buffer:
-        while True:
-            chunk = await file.read(1024 * 512)
-            if not chunk:
-                break
-            total_size += len(chunk)
-            if total_size > MAX_FILE_SIZE:
-                buffer.close()
-                os.remove(physical_path)
-                raise HTTPException(status_code=413, detail="File too large")
-            buffer.write(chunk)
+    async with aiofiles.open(physical_path, "wb") as buffer:
+        await buffer.write(content)
 
     new_file = {
         "id": len(files_db) + 1,
         "filename": file.filename,
         "owner": user["username"],
-        "path": physical_path
+        "path": physical_path,
+        "is_encrypted": encrypt
     }
     files_db.append(new_file)
     
-    return {"message": "Uploaded", "file_id": new_file["id"]}
+    return {"message": "Uploaded", "file_id": new_file["id"], "encrypted": encrypt}
 
 @app.get("/files/{file_id}/download")
 async def download_file(
@@ -111,16 +105,25 @@ async def download_file(
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     file_data = next((f for f in files_db if f["id"] == file_id), None)
-    if not file_data or not file_data["path"]:
-        raise HTTPException(status_code=404, detail="File not found on disk")
+    if not file_data or not os.path.exists(file_data["path"]):
+        raise HTTPException(status_code=404, detail="File not found")
 
     if user["role"] != "admin" and file_data["owner"] != user["username"]:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    return FileResponse(
-        path=file_data["path"],
-        filename=file_data["filename"],
-        content_disposition_type="attachment"
+    async with aiofiles.open(file_data["path"], "rb") as f:
+        content = await f.read()
+
+    if file_data.get("is_encrypted"):
+        try:
+            content = cipher_suite.decrypt(content)
+        except Exception:
+            raise HTTPException(status_code=500, detail="Decryption failed")
+
+    return FastApiResponse(
+        content=content,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename={file_data['filename']}"}
     )
 
 @app.get("/logout")

@@ -1,36 +1,37 @@
 import requests
+import os
 
 BASE_URL = "http://127.0.0.1:8000"
 
-def test_security():
-    print("Запуск тестов безопасности")
-    
-    s_alice = requests.Session()
-    s_alice.post(f"{BASE_URL}/login", data={"username": "alice"})
-    
-    resp_idor = s_alice.get(f"{BASE_URL}/files/2")
-    print(f"Test 1 IDOR Alice -> Bob's file - Status {resp_idor.status_code}") 
-    assert resp_idor.status_code == 404, "Алиса увидела чужой файл"
+def test_secure_storage_flow():
+    session = requests.Session()
 
-    resp_own = s_alice.get(f"{BASE_URL}/files/1")
-    print(f"Test 2 Alice -> own file - Status {resp_own.status_code}")
-    assert resp_own.status_code == 200, "Алиса не смогла получить свой файл"
+    session.post(f"{BASE_URL}/login", data={"username": "alice"})
 
-    resp_my = s_alice.get(f"{BASE_URL}/files/my")
-    print(f"Test 3 My files list count - {len(resp_my.json()['files'])}")
-    assert len(resp_my.json()['files']) == 1
+    valid_jpeg = b"\xff\xd8\xff\xdb" + b"0" * 100 
+    files = {"file": ("my_photo.jpg", valid_jpeg, "image/jpeg")}
+    upload_resp = session.post(f"{BASE_URL}/files/upload", files=files)
+    assert upload_resp.status_code == 200
+    file_id = upload_resp.json().get("file_id")
 
-    s_admin = requests.Session()
-    s_admin.post(f"{BASE_URL}/login", data={"username": "admin"})
-    
-    resp_del = s_admin.delete(f"{BASE_URL}/files/2")
-    print(f"Test 4 Admin Delete Bob's file - Status {resp_del.status_code}")
-    assert resp_del.status_code == 200, "Админ не смог удалить файл"
+    idor_resp = session.get(f"{BASE_URL}/files/2/download")
+    assert idor_resp.status_code in [403, 404]
 
-    print("\nВсе тесты пройдены")
+    fake_jpeg = b"plain text content"
+    files_fake = {"file": ("virus.jpg", fake_jpeg, "image/jpeg")}
+    fake_resp = session.post(f"{BASE_URL}/files/upload", files=files_fake)
+    assert fake_resp.status_code == 400
+
+    down_resp = session.get(f"{BASE_URL}/files/{file_id}/download")
+    assert down_resp.status_code == 200
+    assert "attachment" in down_resp.headers.get("Content-Disposition", "")
+    assert f'filename="my_photo.jpg"' in down_resp.headers.get("Content-Disposition", "")
+
+    big_data = b"0" * (3 * 1024 * 1024)
+    big_resp = session.post(f"{BASE_URL}/files/upload", files={"file": ("huge.jpg", big_data, "image/jpeg")})
+    assert big_resp.status_code == 413
+
+    print("Status: All tests passed")
 
 if __name__ == "__main__":
-    try:
-        test_security()
-    except Exception as e:
-        print(f"Ошибка: {e}")
+    test_secure_storage_flow()

@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  file-manager-app:
+  app:
     build: .
     container_name: file_manager_container
     ports:
@@ -10,4 +10,15 @@ services:
       - .env
     volumes:
       - ./storage:/app/storage
-    restart: always
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"

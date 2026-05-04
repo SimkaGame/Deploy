@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  file-manager-app:
+    build: .
+    container_name: file_manager_container
+    ports:
+      - "8001:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./storage:/app/storage
+    restart: always

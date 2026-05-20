@@ -7,3 +7,10 @@ repos:
       language: system
       pass_filenames: false
       always_run: true
+
+    - id: bandit
+      name: bandit
+      entry: python -m bandit -r src/ -ll
+      language: system
+      types: [python]
+      pass_filenames: false

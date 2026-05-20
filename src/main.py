@@ -80,7 +80,7 @@ def get_current_user(request: Request) -> Optional[dict]:
 
 @app.get("/cause_error")
 async def cause_error():
-    return 1 / 0
+    raise RuntimeError("Deliberate error for logging test")
 
 @app.post("/login")
 async def login(request: Request, username: str = Form(...)):

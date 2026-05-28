@@ -1,8 +1,6 @@
 import os
 import uuid
 import aiofiles
-import logging
-import sys
 from typing import Annotated, Any, Optional
 from dotenv import load_dotenv
 from cryptography.fernet import Fernet
@@ -10,23 +8,10 @@ from fastapi import FastAPI, Request, Response, Form, Depends, HTTPException, Up
 from fastapi.responses import Response as FastApiResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
+from src.logger_config import logger
+from src.schemas import UserCreate
+
 load_dotenv()
-
-LOG_DIR = "logs"
-if not os.path.exists(LOG_DIR):
-    os.makedirs(LOG_DIR)
-
-logger = logging.getLogger("file_manager")
-logger.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
-
-file_handler = logging.FileHandler(os.path.join(LOG_DIR, "app.log"))
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
 
 app = FastAPI(title="Security App")
 
@@ -58,7 +43,9 @@ users = [
     {"username": "bob", "role": "user"},
 ]
 
-files_db = []
+files_db = [
+    {"id": 1, "filename": "dummy.jpg", "owner": "system", "path": "storage/dummy.bin", "is_encrypted": False}
+]
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next: Any) -> Any:
@@ -81,6 +68,11 @@ def get_current_user(request: Request) -> Optional[dict]:
 @app.get("/cause_error")
 async def cause_error():
     raise RuntimeError("Deliberate error for logging test")
+
+@app.post("/register")
+async def register_user(user_data: UserCreate):
+    logger.info(f"User {user_data.username} registered successfully")
+    return {"message": "User registered successfully"}
 
 @app.post("/login")
 async def login(request: Request, username: str = Form(...)):
@@ -110,6 +102,10 @@ async def upload_file(
     if len(content) > MAX_FILE_SIZE:
         logger.warning(f"User {user['username']} tried to upload a file exceeding size limit")
         raise HTTPException(status_code=413, detail="File too large")
+
+    if not content.startswith(b"\xff\xd8\xff"):
+        logger.warning(f"User {user['username']} uploaded invalid file signature")
+        raise HTTPException(status_code=400, detail="Invalid file format")
 
     if encrypt:
         if not cipher_suite:

@@ -1,11 +1,9 @@
 import requests
-import os
 
 BASE_URL = "http://127.0.0.1:8000"
 
 def test_secure_storage_flow():
     session = requests.Session()
-
     session.post(f"{BASE_URL}/login", data={"username": "alice"})
 
     valid_jpeg = b"\xff\xd8\xff\xdb" + b"0" * 100 
@@ -14,7 +12,7 @@ def test_secure_storage_flow():
     assert upload_resp.status_code == 200
     file_id = upload_resp.json().get("file_id")
 
-    idor_resp = session.get(f"{BASE_URL}/files/2/download")
+    idor_resp = session.get(f"{BASE_URL}/files/1/download")
     assert idor_resp.status_code in [403, 404]
 
     fake_jpeg = b"plain text content"
